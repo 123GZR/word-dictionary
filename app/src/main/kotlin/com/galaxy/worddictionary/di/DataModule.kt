@@ -2,6 +2,8 @@ package com.galaxy.worddictionary.di
 
 import com.galaxy.worddictionary.data.DictionaryRepository
 import com.galaxy.worddictionary.data.LocalDictionaryRepository
+import com.galaxy.worddictionary.data.LocalWrongBookRepository
+import com.galaxy.worddictionary.data.WrongBookRepository
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -41,4 +43,8 @@ abstract class DataBindsModule {
     @Binds
     @Singleton
     abstract fun bindDictionary(impl: LocalDictionaryRepository): DictionaryRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindWrongBook(impl: LocalWrongBookRepository): WrongBookRepository
 }

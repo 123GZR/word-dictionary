@@ -17,6 +17,7 @@ import com.galaxy.worddictionary.ui.screens.LoadingScreen
 import com.galaxy.worddictionary.ui.screens.StudyScreen
 import com.galaxy.worddictionary.ui.screens.WordDetailScreen
 import com.galaxy.worddictionary.ui.screens.WordListScreen
+import com.galaxy.worddictionary.ui.screens.WrongBookScreen
 
 /**
  * 顶层导航根：使用 navigation-compose 的 [NavHost] 管理三个目的地
@@ -36,6 +37,7 @@ fun WordAppScreen(
     val nav = rememberNavController()
     val uiState by viewModel.uiState.collectAsState()
     val studyState by viewModel.studyState.collectAsState()
+    val wrongIds by viewModel.wrongIds.collectAsState()
 
     // 稳定 lambda：避免每次重组产生新实例导致下游无谓重组
     val onBack = remember(nav) {
@@ -48,6 +50,12 @@ fun WordAppScreen(
         { order: StudyOrder ->
             viewModel.startStudy(order)
             nav.navigate("study") { launchSingleTop = true }
+            Unit
+        }
+    }
+    val onOpenWrongBook = remember(nav) {
+        {
+            nav.navigate("wrongbook") { launchSingleTop = true }
             Unit
         }
     }
@@ -69,7 +77,8 @@ fun WordAppScreen(
                         onQueryChange = viewModel::updateSearchQuery,
                         onClearSearch = viewModel::clearSearch,
                         onWordClick = onWordClick,
-                        onStartStudy = onStartStudy
+                        onStartShuffled = { onStartStudy(StudyOrder.SHUFFLED) },
+                        onOpenWrongBook = onOpenWrongBook
                     )
                     is WordUiState.Error -> ErrorScreen(onRetry = viewModel::loadWords)
                 }
@@ -99,6 +108,19 @@ fun WordAppScreen(
                     onReset = viewModel::resetStudy,
                     onBack = onBack
                 )
+            }
+            composable("wrongbook") {
+                val allWords = (uiState as? WordUiState.Success)?.allWords
+                if (allWords != null) {
+                    WrongBookScreen(
+                        words = allWords.filter { it.id in wrongIds },
+                        onWordClick = onWordClick,
+                        onBack = onBack
+                    )
+                } else {
+                    // 词库未就绪（理论不可达）：直接返回
+                    LaunchedEffect(Unit) { nav.popBackStack() }
+                }
             }
         }
     }

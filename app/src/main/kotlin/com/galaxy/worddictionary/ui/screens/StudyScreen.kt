@@ -23,13 +23,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
@@ -56,9 +56,9 @@ import com.galaxy.worddictionary.ui.components.SummaryIcon
 /**
  * 背诵模式（交互原型来自 HTML demo：背单词 MVP）：
  * - 正面显示单词，点击/点按卡片翻面显示释义
- * - 背面「认识 / 不认识」标记并自动前进
- * - 转表圈（或上滑）= 纯跳过，不记录状态
- * - 「梗概」展示已标记的记得/没记得清单；可清空更改重新开始
+ * - 背面「认识 / 不认识」标记并自动前进；标记「不认识」同步记入错题集
+ * - 转表圈（或上滑）= 第一次翻面显示释义，再转一次跳过（不记录状态）
+ * - 「梗概」展示已标记的记得/没记得清单（表圈可滚动）；可清空更改重新开始
  * - 全部答完显示结束统计（认识/不认识 + 再来一组）
  */
 @Composable
@@ -73,9 +73,9 @@ fun StudyScreen(
 ) {
     var showSummary by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
-    // 表圈输入：映射到可滚动状态，每个格值变化触发一次「跳过下一词」（与 demo 一致：不记录状态）
+    // 表圈输入：映射到可滚动状态，每个格值变化触发一次动作（未翻面→翻面显示释义，已翻面→跳过）
     val bezelScroll = remember { ScrollState(0) }
-    // FlingBehavior 非 SAM 接口，用对象表达式实现（禁用惯性甩动：表圈一格 = 一次跳过）
+    // FlingBehavior 非 SAM 接口，用对象表达式实现（禁用惯性甩动：表圈一格 = 一次动作）
     val flingBehavior = remember {
         object : FlingBehavior {
             override suspend fun ScrollScope.performFling(initialVelocity: Float): Float = 0f
@@ -126,13 +126,17 @@ fun StudyScreen(
                     )
 
                     else -> state.current?.let { entry ->
-                        FlipCard(
-                            entry = entry,
-                            flipped = state.flipped,
-                            currentReviewed = state.currentReviewed,
-                            onFlip = onFlip,
-                            onMark = onMark
-                        )
+                        // key(word)：换词时重建卡片，动画从正面（英文）开始，
+                        // 避免旧词翻面动画回落到新词时闪现新词中文释义
+                        key(entry.word) {
+                            FlipCard(
+                                entry = entry,
+                                flipped = state.flipped,
+                                currentReviewed = state.currentReviewed,
+                                onFlip = onFlip,
+                                onMark = onMark
+                            )
+                        }
                     }
                 }
             }
@@ -151,14 +155,15 @@ fun StudyScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+    // 焦点：梗概打开时由梗概层接管表圈焦点，关闭后交还背诵卡片
+    LaunchedEffect(showSummary) {
+        if (!showSummary) focusRequester.requestFocus()
     }
 
-    // 表圈转动 → 跳过下一词，并把滚动状态归零等待下一次
+    // 表圈转动 → 未翻面先翻面显示释义，已翻面则跳过下一词，并把滚动状态归零等待下一次
     LaunchedEffect(bezelScroll.value) {
         if (bezelScroll.value != 0) {
-            onSkip()
+            if (!state.flipped) onFlip() else onSkip()
             bezelScroll.scrollTo(0)
         }
     }
@@ -279,7 +284,7 @@ private fun FrontFace(entry: WordEntry, currentReviewed: Boolean) {
             FlipIcon(sizeDp = 14.dp)
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-                text = if (currentReviewed) "已标记 · 转表圈跳过" else "点击翻面 · 转表圈跳过",
+                text = if (currentReviewed) "已标记 · 转表圈看释义" else "点击翻面 · 转表圈看释义",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -310,7 +315,17 @@ private fun BackFace(entry: WordEntry, onMark: (Boolean) -> Unit) {
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 6.dp)
         )
-        Spacer(modifier = Modifier.height(18.dp))
+        Spacer(modifier = Modifier.height(14.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            FlipIcon(sizeDp = 12.dp)
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = "转表圈跳过",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(modifier = Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(
                 onClick = { onMark(true) },
@@ -390,7 +405,7 @@ private fun StatCell(label: String, value: Int, color: androidx.compose.ui.graph
     }
 }
 
-/** 梗概覆盖层：记得/没记得清单 + 清空更改 */
+/** 梗概覆盖层：记得/没记得清单 + 清空更改；打开时接管表圈焦点，转表圈滚动清单 */
 @Composable
 private fun SummaryOverlay(
     state: StudyState,
@@ -399,6 +414,8 @@ private fun SummaryOverlay(
 ) {
     val knownWords = state.words.filter { it.id in state.known }
     val unknownWords = state.words.filter { it.id in state.unknown }
+    val scrollState = rememberScrollState()
+    val summaryFocus = remember { FocusRequester() }
 
     Box(
         modifier = Modifier
@@ -408,7 +425,12 @@ private fun SummaryOverlay(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .focusRequester(summaryFocus)
+                .rotaryScrollable(
+                    behavior = RotaryScrollableDefaults.behavior(scrollState),
+                    focusRequester = summaryFocus
+                )
+                .verticalScroll(scrollState)
                 .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             Text(
@@ -443,6 +465,11 @@ private fun SummaryOverlay(
                 }
             }
         }
+    }
+
+    // 梗概打开时接管表圈焦点（转表圈滚动清单）
+    LaunchedEffect(Unit) {
+        summaryFocus.requestFocus()
     }
 }
 

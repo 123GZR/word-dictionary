@@ -34,13 +34,12 @@ import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.TextButton
 import com.galaxy.worddictionary.data.model.WordEntry
-import com.galaxy.worddictionary.ui.StudyOrder
 import com.galaxy.worddictionary.ui.components.BookIcon
 import com.galaxy.worddictionary.ui.components.SearchIcon
 
 /**
  * 词库浏览列表：TransformingLazyColumn + 表圈 snap 滚动。
- * 顶部：标题/总数进度、顺序/随机背诵入口、搜索框；下方为词条列表。
+ * 顶部：标题/总数进度、错题集/随机背诵入口、搜索框；下方为词条列表。
  */
 @Composable
 fun WordListScreen(
@@ -49,7 +48,8 @@ fun WordListScreen(
     onQueryChange: (String) -> Unit,
     onClearSearch: () -> Unit,
     onWordClick: (WordEntry) -> Unit,
-    onStartStudy: (StudyOrder) -> Unit,
+    onStartShuffled: () -> Unit,
+    onOpenWrongBook: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberTransformingLazyColumnState()
@@ -90,18 +90,18 @@ fun WordListScreen(
                 }
             }
 
-            // 背诵入口：顺序 / 随机
+            // 背诵/错题入口：错题集 + 随机背
             item(key = "study-entries") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Button(onClick = { onStartStudy(StudyOrder.SEQUENTIAL) }) {
-                        Text("顺序背", style = MaterialTheme.typography.labelMedium)
+                    Button(onClick = onOpenWrongBook) {
+                        Text("错题集", style = MaterialTheme.typography.labelMedium)
                     }
                     Spacer(modifier = Modifier.width(10.dp))
-                    Button(onClick = { onStartStudy(StudyOrder.SHUFFLED) }) {
+                    Button(onClick = onStartShuffled) {
                         Text("随机背", style = MaterialTheme.typography.labelMedium)
                     }
                 }
@@ -138,9 +138,9 @@ fun WordListScreen(
     }
 }
 
-/** 词条行：英文 + 词性/释义（单行省略） */
+/** 词条行：英文 + 词性/释义（单行省略）；供词库列表与错题集复用 */
 @Composable
-private fun WordRow(
+internal fun WordRow(
     entry: WordEntry,
     onClick: () -> Unit,
     modifier: Modifier = Modifier

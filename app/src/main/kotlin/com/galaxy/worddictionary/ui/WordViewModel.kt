@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.galaxy.worddictionary.data.DictionaryRepository
 import com.galaxy.worddictionary.data.WordDataLoadException
+import com.galaxy.worddictionary.data.WrongBookRepository
 import com.galaxy.worddictionary.data.model.WordEntry
 import com.galaxy.worddictionary.di.IoDispatcher
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -69,6 +70,7 @@ data class StudyState(
 @HiltViewModel
 class WordViewModel @Inject constructor(
     private val dictionaryRepository: DictionaryRepository,
+    private val wrongBookRepository: WrongBookRepository,
     @param:IoDispatcher private val ioDispatcher: CoroutineContext
 ) : ViewModel() {
 
@@ -78,6 +80,10 @@ class WordViewModel @Inject constructor(
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
+    /** 错题集：背诵时标记「不认识」的词条 id 集合（持久化，跨会话保留） */
+    private val _wrongIds = MutableStateFlow<Set<String>>(emptySet())
+    val wrongIds: StateFlow<Set<String>> = _wrongIds.asStateFlow()
+
     private val _studyState = MutableStateFlow(StudyState())
     val studyState: StateFlow<StudyState> = _studyState.asStateFlow()
 
@@ -86,6 +92,7 @@ class WordViewModel @Inject constructor(
 
     init {
         loadWords()
+        _wrongIds.value = wrongBookRepository.loadWrongIds()
     }
 
     /** 首次加载词库（assets 解析在 IO 调度器执行，避免主线程卡顿） */
@@ -157,7 +164,10 @@ class WordViewModel @Inject constructor(
         _studyState.value = s.copy(flipped = !s.flipped)
     }
 
-    /** 标记当前词「认识/不认识」并前进到下一词 */
+    /**
+     * 标记当前词「认识/不认识」并前进到下一词。
+     * 标记「不认识」时同步写入错题集（持久化，供错题集页面回顾）。
+     */
     fun markCurrent(known: Boolean) {
         val s = _studyState.value
         val current = s.current ?: return
@@ -165,6 +175,10 @@ class WordViewModel @Inject constructor(
 
         val newKnown = if (known) s.known + current.id else s.known
         val newUnknown = if (known) s.unknown else s.unknown + current.id
+        if (!known) {
+            wrongBookRepository.addWrong(current.id)
+            _wrongIds.value = _wrongIds.value + current.id
+        }
         _studyState.value = s.copy(
             known = newKnown,
             unknown = newUnknown,

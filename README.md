@@ -1,7 +1,7 @@
 # Galaxy Watch 高考高频词背单词 App
 
 为 Galaxy Watch 4 Classic 打造的高考高频词汇词典应用（1269 词，离线可用），
-支持词库浏览/搜索、单词详情、翻卡背诵（顺序/随机）与「我的梗概」回顾。
+支持词库浏览/搜索、单词详情、翻卡背诵（随机）、错题集与「我的梗概」回顾。
 
 基于 **Kotlin + Jetpack Compose + Wear OS** 技术栈，采用 MVVM + Repository 架构，
 完全套用 `D:\app`（WeatherWatch）的开发规范与程序架构。
@@ -100,6 +100,8 @@ app-word_dictionary/                       # 工程根目录
         │   │   │   ├── model/WordEntry.kt       # 词条模型（@Immutable + @Serializable）
         │   │   │   ├── DictionaryRepository.kt  # 词库仓库接口
         │   │   │   ├── LocalDictionaryRepository.kt # assets JSON 实现（单例缓存）
+        │   │   │   ├── WrongBookRepository.kt   # 错题集仓库接口
+        │   │   │   ├── LocalWrongBookRepository.kt # 错题集 SharedPreferences 实现
         │   │   │   └── WordExceptions.kt        # 词库业务异常
         │   │   ├── di/DataModule.kt             # Hilt 装配（Provides / Binds）
         │   │   └── ui/                          # UI 层
@@ -108,9 +110,10 @@ app-word_dictionary/                       # 工程根目录
         │   │       ├── theme/Theme.kt           # Wear M3 主题（原型配色）
         │   │       ├── components/DictionaryIcons.kt # Canvas 矢量图标（禁 emoji）
         │   │       └── screens/
-        │   │           ├── WordListScreen.kt    # 词库浏览/搜索/背诵入口
+        │   │           ├── WordListScreen.kt    # 词库浏览/搜索/错题集与随机背诵入口
         │   │           ├── WordDetailScreen.kt  # 单词详情
         │   │           ├── StudyScreen.kt       # 翻卡背诵 + 梗概（MVP 核心）
+        │   │           ├── WrongBookScreen.kt   # 错题集（表圈滚动）
         │   │           ├── LoadingScreen.kt
         │   │           └── ErrorScreen.kt
         │   └── res/
@@ -162,7 +165,8 @@ app-word_dictionary/                       # 工程根目录
 - 📖 **词库浏览**：1269 条高考高频词/短语，TransformingLazyColumn 列表 + 表圈 snap 滚动
 - 🔍 **搜索**：英文包含/前缀 + 中文释义包含，200ms 防抖
 - 🃏 **翻卡背诵**：点击翻面显示释义，「认识/不认识」标记自动前进；长单词自动缩小字号
-- 🌀 **表圈跳过**：转表圈 = 纯跳过，不记录状态（与 HTML 交互原型一致）
+- 🌀 **表圈驱动**：背诵时转表圈先翻面看释义、再转跳过；梗概与错题集列表支持表圈滚动
+- 📕 **错题集**：背诵标记「不认识」的单词自动记录并持久化，列表页入口回顾
 - 📊 **我的梗概**：记得/没记得清单回顾，可清空更改重新开始
 - ✅ **结束统计**：全部答完后展示认识/不认识统计与「再来一组」
 - 🎨 **Canvas 矢量图标**：纯绘制图标，无字体依赖，性能更好
@@ -226,6 +230,7 @@ app-word_dictionary/                       # 工程根目录
 - [x] M3 词库浏览与详情 UI（列表 + 搜索 + 详情）
 - [x] M4 背诵模式 MVP（翻卡/认识/不认识/表圈跳过/梗概/结束统计）
 - [x] M5 构建验证与文档交付（:app:assembleDebug 通过）
+- [x] M6 错题集与表圈交互升级（错题持久化/错题列表/梗概表圈滚动/先看释义再跳过/换词闪现修复）
 
 ---
 
