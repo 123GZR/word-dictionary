@@ -50,7 +50,7 @@ Screens/Components ──► WordViewModel ──► DictionaryRepository 接口
 | `data/model/WordEntry.kt` | `WordBook`/`WordEntry` 数据模型（`@Immutable` + `@Serializable`） |
 | `data/DictionaryRepository.kt` | 仓库接口：`searchWords` / `getAllWords` / `getWord` |
 | `data/LocalDictionaryRepository.kt` | assets `words.json` 加载与解析（单例缓存 + 内存过滤） |
-| `data/WrongBookRepository.kt` | 错题集仓库接口：`loadWrongIds` / `addWrong` |
+| `data/WrongBookRepository.kt` | 错题集仓库接口：`loadWrongIds` / `addWrong` / `removeWrong` / `clearWrong` |
 | `data/LocalWrongBookRepository.kt` | 错题集 SharedPreferences 实现（StringSet 持久化） |
 | `data/WordExceptions.kt` | 业务异常：`WordDataLoadException`（词库加载失败） |
 
@@ -78,9 +78,12 @@ Screens/Components ──► WordViewModel ──► DictionaryRepository 接口
 - `loadWords()`：首次加载（IO 调度器），失败映射为 `Error(DATA_LOAD_FAILED)`
 - `updateSearchQuery()` / `clearSearch()`：200ms 防抖刷新 `displayWords`
 - `startStudy(order)`：随机（`shuffled()` 一次成型，会话内顺序固定）
+- `startWrongStudy()`：以当前错题为数据源开始复习会话（顺序，`source = WRONG_BOOK`）
+- `clearWrong()`：清空错题集（持久化 + 内存状态）
 - `flipCard()` / `markCurrent(known)` / `skipNext()` / `resetStudy()`：背诵会话编排；
   全部答完（`reviewed >= words.size`）进入完成态，不再前进；
-  `markCurrent(false)` 同步把词条 id 写入错题集（`WrongBookRepository.addWrong`）
+  `markCurrent(false)` 同步把词条 id 写入错题集（`WrongBookRepository.addWrong`）；
+  `markCurrent(true)` 在错题复习会话（`source == WRONG_BOOK`）中同步移出错题集（已学会）
 
 ## UI 层详解
 
@@ -90,7 +93,7 @@ Screens/Components ──► WordViewModel ──► DictionaryRepository 接口
 | `screens/WordListScreen.kt` | 词库列表：标题/总数、错题集/随机背诵入口、搜索框、词条行；TransformingLazyColumn + snap 表圈滚动 + 稳定 key |
 | `screens/WordDetailScreen.kt` | 单词详情：英文/词性/释义/派生链 + 开始背诵入口 |
 | `screens/StudyScreen.kt` | 翻卡背诵：3D 翻转动画、认识/不认识、表圈驱动、梗概覆盖层（表圈滚动）、结束统计 |
-| `screens/WrongBookScreen.kt` | 错题集：错题回顾列表（表圈滚动）+ 空状态 |
+| `screens/WrongBookScreen.kt` | 错题集：错题回顾列表（表圈滚动）+ 开始复习/清空错题 + 空状态 |
 | `screens/LoadingScreen.kt` / `ErrorScreen.kt` | 加载/错误态 |
 | `components/DictionaryIcons.kt` | Canvas 矢量图标（返回/搜索/词库/翻面/认识/不认识/梗概） |
 | `theme/Theme.kt` | Wear M3 主题：`dynamicColorScheme` 优先 + 品牌色兜底（原型配色） |
@@ -105,6 +108,8 @@ Screens/Components ──► WordViewModel ──► DictionaryRepository 接口
 错题集交互：
 - 列表页「错题集」入口 → 错题回顾列表（TransformingLazyColumn + snap 表圈滚动）
 - 标记「不认识」自动写入 SharedPreferences 持久化；点击错题词条进入详情
+- 「开始复习」→ 以当前错题为数据源进入背诵会话（`StudySource.WRONG_BOOK`），
+  标记「认识」自动移出错题集；「清空错题」→ 清空持久化与内存错题集
 
 ## 状态流转
 
@@ -119,7 +124,8 @@ Screens/Components ──► WordViewModel ──► DictionaryRepository 接口
 
 StudyState:
   未翻面（正面单词） → flipCard → 翻面（背面释义）
-  翻面 → markCurrent(true/false) → 记录并前进（翻回正面）；false 同步写入错题集
+  翻面 → markCurrent(true/false) → 记录并前进（翻回正面）；false 同步写入错题集；
+         错题复习（source=WRONG_BOOK）时 true 同步移出错题集
   未翻面 → skipNext（表圈第一次）→ 翻面；已翻面 → skipNext（表圈第二次）→ 前进不记录
   reviewed == words.size → 完成态 → resetStudy（再来一组）/ 返回
 ```

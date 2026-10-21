@@ -33,6 +33,20 @@ class LocalWrongBookRepository @Inject constructor(
             .apply()
     }
 
+    override fun removeWrong(id: String) {
+        val current = loadWrongIds()
+        if (id !in current) return
+        prefs.edit()
+            .putStringSet(KEY_WRONG_IDS, current - id)
+            .apply()
+    }
+
+    override fun clearWrong() {
+        prefs.edit()
+            .remove(KEY_WRONG_IDS)
+            .apply()
+    }
+
     private companion object {
         const val PREFS_NAME = "word_dictionary_prefs"
         const val KEY_WRONG_IDS = "wrong_book_ids"

@@ -11,4 +11,10 @@ interface WrongBookRepository {
 
     /** 将词条 id 加入错题集（幂等） */
     fun addWrong(id: String)
+
+    /** 将词条 id 移出错题集（复习时标记「认识」） */
+    fun removeWrong(id: String)
+
+    /** 清空错题集 */
+    fun clearWrong()
 }

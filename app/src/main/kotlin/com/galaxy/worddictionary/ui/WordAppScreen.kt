@@ -59,6 +59,13 @@ fun WordAppScreen(
             Unit
         }
     }
+    val onStartWrongReview = remember(viewModel, nav) {
+        {
+            viewModel.startWrongStudy()
+            nav.navigate("study") { launchSingleTop = true }
+            Unit
+        }
+    }
     val onWordClick = remember(viewModel, nav) {
         { entry: WordEntry ->
             nav.navigate("detail/${Uri.encode(entry.word)}")
@@ -115,6 +122,8 @@ fun WordAppScreen(
                     WrongBookScreen(
                         words = allWords.filter { it.id in wrongIds },
                         onWordClick = onWordClick,
+                        onStartReview = onStartWrongReview,
+                        onClearWrong = viewModel::clearWrong,
                         onBack = onBack
                     )
                 } else {

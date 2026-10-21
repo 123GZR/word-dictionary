@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnDefaults
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
+import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
@@ -27,12 +28,14 @@ import com.galaxy.worddictionary.ui.components.CrossIcon
 /**
  * 错题集：背诵时标记「不认识」的单词回顾列表。
  * TransformingLazyColumn + snap 表圈滚动（表圈驱动，与词库列表一致），
- * 点击词条进入单词详情。
+ * 点击词条进入单词详情；可「开始复习」（标记认识自动移出）或「清空错题」。
  */
 @Composable
 fun WrongBookScreen(
     words: List<WordEntry>,
     onWordClick: (WordEntry) -> Unit,
+    onStartReview: () -> Unit,
+    onClearWrong: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -100,6 +103,28 @@ fun WrongBookScreen(
                     )
                 }
             } else {
+                // 操作区：开始复习 / 清空错题
+                item(key = "actions") {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Button(onClick = onStartReview) {
+                            Text("开始复习", style = MaterialTheme.typography.labelMedium)
+                        }
+                        TextButton(onClick = onClearWrong) {
+                            Text("清空错题", style = MaterialTheme.typography.labelMedium)
+                        }
+                        Text(
+                            text = "复习时标记「认识」自动移出错题",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                }
+
                 // 错题列表（稳定 key：word 文本）
                 words.forEach { entry ->
                     item(key = "wrong-${entry.word}") {

@@ -38,15 +38,19 @@ sealed interface WordUiState {
 /** 背诵顺序 */
 enum class StudyOrder { SEQUENTIAL, SHUFFLED }
 
+/** 背诵会话来源：普通背诵 / 错题集复习（决定标记「认识」时是否移出错题集） */
+enum class StudySource { NORMAL, WRONG_BOOK }
+
 /**
  * 背诵会话状态。
  *
- * @param words 会话词序（顺序或随机打乱后的完整词库）
+ * @param words 会话词序（顺序或随机打乱后的完整词库/错题列表）
  * @param index 当前词索引
  * @param flipped 是否已翻面（正/背面）
  * @param known 已标记「认识」的词条 id 集合
  * @param unknown 已标记「不认识」的词条 id 集合
  * @param order 本次会话顺序
+ * @param source 会话来源（错题集复习时标记「认识」同步移出错题集）
  */
 data class StudyState(
     val words: List<WordEntry> = emptyList(),
@@ -54,7 +58,8 @@ data class StudyState(
     val flipped: Boolean = false,
     val known: Set<String> = emptySet(),
     val unknown: Set<String> = emptySet(),
-    val order: StudyOrder = StudyOrder.SEQUENTIAL
+    val order: StudyOrder = StudyOrder.SEQUENTIAL,
+    val source: StudySource = StudySource.NORMAL
 ) {
     val current: WordEntry? get() = words.getOrNull(index)
     val reviewed: Int get() = known.size + unknown.size
@@ -146,7 +151,7 @@ class WordViewModel @Inject constructor(
 
     // ---- 背诵会话 ----
 
-    /** 开始背诵会话：顺序或随机（随机使用 shuffled 一次成型，会话内顺序固定） */
+    /** 开始背诵会话：随机（shuffled 一次成型，会话内顺序固定） */
     fun startStudy(order: StudyOrder) {
         val allWords = (_uiState.value as? WordUiState.Success)?.allWords
             ?: dictionaryRepository.getAllWords()
@@ -155,6 +160,27 @@ class WordViewModel @Inject constructor(
             StudyOrder.SHUFFLED -> allWords.shuffled()
         }
         _studyState.value = StudyState(words = words, order = order)
+    }
+
+    /**
+     * 开始错题集复习会话：以当前错题为数据源（顺序），
+     * 标记「认识」时同步把词条移出错题集。
+     */
+    fun startWrongStudy() {
+        val allWords = (_uiState.value as? WordUiState.Success)?.allWords
+            ?: dictionaryRepository.getAllWords()
+        val wrongWords = allWords.filter { it.id in _wrongIds.value }
+        _studyState.value = StudyState(
+            words = wrongWords,
+            order = StudyOrder.SEQUENTIAL,
+            source = StudySource.WRONG_BOOK
+        )
+    }
+
+    /** 清空错题集（持久化 + 内存状态） */
+    fun clearWrong() {
+        wrongBookRepository.clearWrong()
+        _wrongIds.value = emptySet()
     }
 
     /** 翻面：显示释义（正→背） */
@@ -166,7 +192,8 @@ class WordViewModel @Inject constructor(
 
     /**
      * 标记当前词「认识/不认识」并前进到下一词。
-     * 标记「不认识」时同步写入错题集（持久化，供错题集页面回顾）。
+     * - 标记「不认识」：同步写入错题集（持久化，供错题集页面回顾）
+     * - 标记「认识」：错题集复习会话中同步移出错题集（已学会）
      */
     fun markCurrent(known: Boolean) {
         val s = _studyState.value
@@ -178,6 +205,9 @@ class WordViewModel @Inject constructor(
         if (!known) {
             wrongBookRepository.addWrong(current.id)
             _wrongIds.value = _wrongIds.value + current.id
+        } else if (s.source == StudySource.WRONG_BOOK) {
+            wrongBookRepository.removeWrong(current.id)
+            _wrongIds.value = _wrongIds.value - current.id
         }
         _studyState.value = s.copy(
             known = newKnown,
