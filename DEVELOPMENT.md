@@ -68,16 +68,19 @@ Screens/Components ──► WordViewModel ──► DictionaryRepository 接口
 
 状态：
 - `uiState: StateFlow<WordUiState>`：主状态（Loading / Success / Error），
-  `Success` 同时携带 `allWords`（背诵数据源）与 `displayWords`（搜索过滤后列表）
+  `Success` 同时携带 `allWords`（背诵数据源）、`displayWords`（搜索过滤后列表）
+  与 `isLoading`（词库是否仍在后台加载；为 true 时背诵/错题入口禁用）
 - `studyState: StateFlow<StudyState>`：背诵会话状态
   （词序 / 当前索引 / 翻面 / 认识与不认识集合 / 顺序）
 - `wrongIds: StateFlow<Set<String>>`：错题集词条 id 集合（持久化，跨会话保留）
 - `searchQuery: StateFlow<String>`：搜索关键字
 
 业务逻辑：
-- `loadWords()`：首次加载（IO 调度器），失败映射为 `Error(DATA_LOAD_FAILED)`
+- `loadWords()`：词库后台加载（IO 调度器）；加载期间保持主页面骨架
+  （`Success(isLoading = true)`），完成后切换完整数据，失败映射为 `Error(DATA_LOAD_FAILED)`；
+  重试时同样先回到主页面骨架再加载
 - `updateSearchQuery()` / `clearSearch()`：200ms 防抖刷新 `displayWords`
-- `startStudy(order)`：随机（`shuffled()` 一次成型，会话内顺序固定）
+- `startStudy(order)`：随机（`shuffled()` 一次成型，会话内顺序固定）；词库未就绪（`isLoading`）时忽略
 - `startWrongStudy()`：以当前错题为数据源开始复习会话（顺序，`source = WRONG_BOOK`）
 - `clearWrong()`：清空错题集（持久化 + 内存状态）
 - `flipCard()` / `markCurrent(known)` / `skipNext()` / `resetStudy()`：背诵会话编排；
@@ -90,7 +93,7 @@ Screens/Components ──► WordViewModel ──► DictionaryRepository 接口
 | 文件 | 职责 |
 |------|------|
 | `WordAppScreen.kt` | 顶层 NavHost：`list` / `detail/{word}` / `study` / `wrongbook`；普通 NavHost（规避 API 36 SwipeDismissableNavHost 首屏黑屏缺陷） |
-| `screens/WordListScreen.kt` | 词库列表：标题/总数、错题集/随机背诵入口、搜索框、词条行；TransformingLazyColumn + snap 表圈滚动 + 稳定 key |
+| `screens/WordListScreen.kt` | 词库列表：标题/总数、错题集/随机背诵入口、搜索框、词条行；TransformingLazyColumn + snap 表圈滚动 + 稳定 key；词库后台加载中显示页面骨架（入口禁用 + 词条区加载提示） |
 | `screens/WordDetailScreen.kt` | 单词详情：英文/词性/释义/派生链 + 开始背诵入口 |
 | `screens/StudyScreen.kt` | 翻卡背诵：3D 翻转动画、认识/不认识、表圈驱动、梗概覆盖层（表圈滚动）、结束统计 |
 | `screens/WrongBookScreen.kt` | 错题集：错题回顾列表（表圈滚动）+ 开始复习/清空错题 + 空状态 |
@@ -114,13 +117,15 @@ Screens/Components ──► WordViewModel ──► DictionaryRepository 接口
 ## 状态流转
 
 ```
-启动 → Loading → loadWords()
-  ├─ 成功 → Success(allWords, displayWords)
-  │          ├─ 搜索 → updateSearchQuery(防抖) → Success(displayWords 过滤)
-  │          ├─ 点词条 → detail/{word}（详情）
-  │          ├─ 错题集 → wrongbook（wrongIds 过滤 allWords）
-  │          └─ 随机背诵 → startStudy(SHUFFLED) → study（StudyState 会话）
-  └─ 失败 → Error(DATA_LOAD_FAILED) → 重试 → loadWords()
+启动 → Success(空词库, isLoading=true)：主页面骨架立即渲染
+  ├─ loadWords()（后台 IO）
+  │    ├─ 成功 → Success(allWords, displayWords, isLoading=false)
+  │    ├─ 失败 → Error(DATA_LOAD_FAILED) → 重试 → 回到主页面骨架再加载
+  │    └─ 加载中 → 背诵/错题入口禁用，词条区域显示加载提示
+  ├─ 搜索 → updateSearchQuery(防抖) → Success(displayWords 过滤)
+  ├─ 点词条 → detail/{word}（详情）
+  ├─ 错题集 → wrongbook（wrongIds 过滤 allWords）
+  └─ 随机背诵 → startStudy(SHUFFLED) → study（StudyState 会话）
 
 StudyState:
   未翻面（正面单词） → flipCard → 翻面（背面释义）
@@ -169,6 +174,7 @@ StudyState:
 - 搜索防抖（200ms）+ 内存过滤，无 IO 阻塞
 - 静态共享 `Json` 反序列化器；词库单例缓存
 - 深色 `windowBackground` 防冷启动白屏；Manifest 声明主题
+- 启动先渲染主页面骨架，词库在 IO 后台加载完成后填充词条列表（`Success.isLoading` 态），消除整屏加载等待
 
 ## 编码规范
 

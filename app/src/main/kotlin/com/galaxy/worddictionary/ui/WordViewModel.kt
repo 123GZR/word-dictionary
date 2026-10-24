@@ -27,7 +27,13 @@ sealed interface WordUiState {
         val allWords: List<WordEntry>,
         /** 当前列表展示词条（搜索过滤后；空查询时为全部） */
         val displayWords: List<WordEntry>,
-        val query: String = ""
+        val query: String = "",
+        /**
+         * 词库是否仍在后台加载。
+         * 启动时先以空词库进入 [Success] 渲染主页面骨架，加载完成后切为完整数据；
+         * 为 true 时依赖词库数据的入口（背诵/错题）应禁用。
+         */
+        val isLoading: Boolean = false
     ) : WordUiState
 
     data class Error(val type: ErrorType) : WordUiState
@@ -96,20 +102,36 @@ class WordViewModel @Inject constructor(
     private var searchJob: Job? = null
 
     init {
+        // 初始即为主页面骨架（空词库 + 加载中）：主页面立即可渲染，词库后台加载
+        _uiState.value = WordUiState.Success(
+            allWords = emptyList(),
+            displayWords = emptyList(),
+            isLoading = true
+        )
         loadWords()
         _wrongIds.value = wrongBookRepository.loadWrongIds()
     }
 
-    /** 首次加载词库（assets 解析在 IO 调度器执行，避免主线程卡顿） */
+    /**
+     * 加载词库（assets 解析在 IO 调度器执行，避免主线程卡顿）。
+     * 加载期间保持主页面骨架（[WordUiState.Success.isLoading] = true），
+     * 完成后切换为完整数据；失败进入错误页（可重试）。
+     */
     fun loadWords() {
         if (loadJob?.isActive == true) return
         loadJob = viewModelScope.launch(ioDispatcher) {
-            _uiState.value = WordUiState.Loading
+            // 保留主页面骨架，词库在后台继续加载
+            _uiState.value = WordUiState.Success(
+                allWords = emptyList(),
+                displayWords = emptyList(),
+                isLoading = true
+            )
             _uiState.value = try {
                 val words = dictionaryRepository.getAllWords()
                 WordUiState.Success(
                     allWords = words,
-                    displayWords = words
+                    displayWords = words,
+                    isLoading = false
                 )
             } catch (e: WordDataLoadException) {
                 WordUiState.Error(WordUiState.ErrorType.DATA_LOAD_FAILED)
@@ -151,25 +173,25 @@ class WordViewModel @Inject constructor(
 
     // ---- 背诵会话 ----
 
-    /** 开始背诵会话：随机（shuffled 一次成型，会话内顺序固定） */
+    /** 开始背诵会话：随机（shuffled 一次成型，会话内顺序固定）；词库未就绪时忽略 */
     fun startStudy(order: StudyOrder) {
-        val allWords = (_uiState.value as? WordUiState.Success)?.allWords
-            ?: dictionaryRepository.getAllWords()
+        val state = _uiState.value as? WordUiState.Success ?: return
+        if (state.isLoading) return
         val words = when (order) {
-            StudyOrder.SEQUENTIAL -> allWords
-            StudyOrder.SHUFFLED -> allWords.shuffled()
+            StudyOrder.SEQUENTIAL -> state.allWords
+            StudyOrder.SHUFFLED -> state.allWords.shuffled()
         }
         _studyState.value = StudyState(words = words, order = order)
     }
 
     /**
      * 开始错题集复习会话：以当前错题为数据源（顺序），
-     * 标记「认识」时同步把词条移出错题集。
+     * 标记「认识」时同步把词条移出错题集；词库未就绪时忽略。
      */
     fun startWrongStudy() {
-        val allWords = (_uiState.value as? WordUiState.Success)?.allWords
-            ?: dictionaryRepository.getAllWords()
-        val wrongWords = allWords.filter { it.id in _wrongIds.value }
+        val state = _uiState.value as? WordUiState.Success ?: return
+        if (state.isLoading) return
+        val wrongWords = state.allWords.filter { it.id in _wrongIds.value }
         _studyState.value = StudyState(
             words = wrongWords,
             order = StudyOrder.SEQUENTIAL,

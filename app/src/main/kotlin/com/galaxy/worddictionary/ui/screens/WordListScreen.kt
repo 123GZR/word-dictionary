@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -28,6 +29,7 @@ import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnDefaults
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.material3.Button
+import androidx.wear.compose.material3.CircularProgressIndicator
 import androidx.wear.compose.material3.ChildButton
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
@@ -40,11 +42,15 @@ import com.galaxy.worddictionary.ui.components.SearchIcon
 /**
  * 词库浏览列表：TransformingLazyColumn + 表圈 snap 滚动。
  * 顶部：标题/总数进度、错题集/随机背诵入口、搜索框；下方为词条列表。
+ *
+ * @param isLoading 词库是否仍在后台加载：为 true 时页面骨架（标题/入口/搜索框）
+ *                  立即显示，词条区域展示加载提示，背诵/错题入口禁用。
  */
 @Composable
 fun WordListScreen(
     words: List<WordEntry>,
     total: Int,
+    isLoading: Boolean = false,
     onQueryChange: (String) -> Unit,
     onClearSearch: () -> Unit,
     onWordClick: (WordEntry) -> Unit,
@@ -81,7 +87,7 @@ fun WordListScreen(
                         )
                     }
                     Text(
-                        text = "共 $total 词 · 点击查看释义",
+                        text = if (isLoading) "词库加载中…" else "共 $total 词 · 点击查看释义",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -90,18 +96,18 @@ fun WordListScreen(
                 }
             }
 
-            // 背诵/错题入口：错题集 + 随机背
+            // 背诵/错题入口：错题集 + 随机背（词库未就绪时禁用，避免进入空会话）
             item(key = "study-entries") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Button(onClick = onOpenWrongBook) {
+                    Button(onClick = onOpenWrongBook, enabled = !isLoading) {
                         Text("错题集", style = MaterialTheme.typography.labelMedium)
                     }
                     Spacer(modifier = Modifier.width(10.dp))
-                    Button(onClick = onStartShuffled) {
+                    Button(onClick = onStartShuffled, enabled = !isLoading) {
                         Text("随机背", style = MaterialTheme.typography.labelMedium)
                     }
                 }
@@ -115,8 +121,12 @@ fun WordListScreen(
                 )
             }
 
-            // 无结果提示
-            if (words.isEmpty()) {
+            // 词条区域：后台加载中 → 加载提示；已就绪且无结果 → 空态；否则词条列表
+            if (isLoading) {
+                item(key = "word-loading") {
+                    LoadingRow()
+                }
+            } else if (words.isEmpty()) {
                 item(key = "no-results") {
                     Text(
                         text = "未找到匹配的词条",
@@ -162,6 +172,24 @@ internal fun WordRow(
                 overflow = TextOverflow.Ellipsis
             )
         }
+    }
+}
+
+/** 词条区域加载提示：词库后台加载中显示的紧凑行 */
+@Composable
+private fun LoadingRow(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.fillMaxWidth().padding(vertical = 16.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = "词库加载中…",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

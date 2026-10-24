@@ -81,6 +81,7 @@ fun WordAppScreen(
                     is WordUiState.Success -> WordListScreen(
                         words = s.displayWords,
                         total = s.allWords.size,
+                        isLoading = s.isLoading,
                         onQueryChange = viewModel::updateSearchQuery,
                         onClearSearch = viewModel::clearSearch,
                         onWordClick = onWordClick,
